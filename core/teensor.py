@@ -16,7 +16,7 @@ class Teensor():
         self.grad = np.zeros_like(self.data,dtype=float)
         
     def __repr__(self):
-        return f'Teensor(Data:{self.data},dtype:Teensor)'
+        return f'Teensor(Data:\n{self.data},dtype:Teensor)'
 
 
         
@@ -26,15 +26,12 @@ class Teensor():
         
         other = other if isinstance(other,Teensor) else Teensor(other)
         
-        # Precaution for Numpy Broadcasting
-        assert other.data.shape == self.data.shape, "Shape Mismatch!"
-        
         out = Teensor(self.data + other.data, (self,other));out.op='+'
             
         ### (d(A+B)/dA = I[identity matrix])I  * out.grad (chain rule)
         def _backward():
-            self.grad += out.grad
-            other.grad += out.grad
+            self.grad += self.unbroadcast_grad(out.grad, self.data.shape)
+            other.grad += other.unbroadcast_grad(out.grad, other.data.shape)
                 
         out._backward = _backward
             
@@ -47,16 +44,12 @@ class Teensor():
         
         other = other if isinstance(other,Teensor) else Teensor(other)
         
-        # Precaution for Numpy Broadcasting
-        if self.data.shape != other.data.shape:
-            assert self.data.size == 1 or other.data.size == 1, "Shape Mismatch!"
-        
         out = Teensor(self.data * other.data, (self,other));out.op = '*'
             
         ### (d(A*B)/dA = B) B * out.grad(chain rule) 
         def _backward():
-            self.grad += other.data * out.grad
-            other.grad += self.data * out.grad
+            self.grad += self.unbroadcast_grad(other.data * out.grad, self.data.shape)
+            other.grad += other.unbroadcast_grad(self.data * out.grad, other.data.shape)
                 
         out._backward = _backward
                 
@@ -64,12 +57,15 @@ class Teensor():
 
     def __pow__(self,other): # This works via the Hadamard product , not matrix multiplication
         
-        assert isinstance(other,(int,float)), "Only int and float are allowed for exponent"
+        other = other if isinstance(other,Teensor) else Teensor(other)
         
-        out = Teensor(self.data**other, (self, ));out.op = 'pow'
+        assert  other.data.ndim == 0, "Only scalar values are allowed for exponent"
+        
+        out = Teensor(self.data**other.data, (self, other));out.op = 'pow'
             
         def _backward():
-            self.grad += other * (self.data**(other-1)) * out.grad
+            self.grad += other.data * (self.data**(other.data-1)) * out.grad
+            other.grad += other.unbroadcast_grad(np.sum(np.log(self.data + 1e-12) * (self.data**other.data) * out.grad), other.data.shape)
                 
         out._backward = _backward
             
@@ -117,6 +113,11 @@ class Teensor():
     
     @property
     def inverse(self):
+        if self.data.ndim ==2 and self.data.shape[0] == self.data.shape[1]:
+            pass
+        else:
+            raise ValueError("Inverse only defined for square 2D matrices.")
+        
         out = Teensor(np.linalg.inv(self.data),(self, ),'inverse')
         
         def _backward():
@@ -152,6 +153,29 @@ class Teensor():
         out._backward = _backward
         
         return out
+    
+    def reshape(self, new_shape):
+        
+        out = Teensor(self.data.reshape(new_shape), (self,), 'reshape')
+        
+        def _backward():
+            self.grad += out.grad.reshape(self.data.shape)
+        out._backward = _backward
+        
+        return out
+    
+    def unbroadcast_grad(self, grad, shape):
+        
+        while len(shape) < len(grad.shape):
+            shape = (1,) + shape
+
+        # Sum over axes that were broadcasted
+        for axis in reversed(range(len(shape))):
+            if shape[axis] == 1 and grad.shape[axis] > 1:
+                grad = grad.sum(axis=axis, keepdims=True)
+
+        return grad.reshape(shape)
+
 
     # Compute gradients for all tensors
     def backward(self, grad=None):
