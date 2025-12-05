@@ -20,7 +20,8 @@ class Module:
 
 class Linear(Module):
     def __init__(self, in_features, out_features):
-        self.weight = Teensor(np.random.randn(in_features, out_features))
+        scale = np.sqrt(2.0, in_features)
+        self.weight = Teensor(np.random.randn(in_features, out_features)* scale)
         self.bias = Teensor(np.random.randn(1, out_features))
 
     def forward(self, x):
