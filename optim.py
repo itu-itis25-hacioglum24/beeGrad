@@ -1,4 +1,4 @@
-from Teensor.Tensor import Teensor
+from Tensor import Teensor
 
 class SGD:
     def __init__(self, parameters, lr=0.01):
