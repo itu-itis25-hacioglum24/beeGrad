@@ -1,5 +1,5 @@
 import numpy as np
-from Teensor.Tensor import Teensor
+from Tensor import Teensor
     
 
 class Module:
